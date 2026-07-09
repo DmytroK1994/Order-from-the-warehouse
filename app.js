@@ -2,7 +2,7 @@
 
 // PWA-додаток без фреймворків. Усі дані зберігаються локально у localStorage.
 const STORAGE_KEY = 'warehouse_order_pwa_v1';
-const APP_VERSION = 'v42';
+const APP_VERSION = 'v43';
 const CORE_ASSETS = ['./', './index.html', './styles.css', './app.js', './manifest.json'];
 const UNITS = ['кг', 'г', 'т', 'шт', 'мішки', 'коробки', 'ящики', 'піддони', 'літри', 'власна одиниця'];
 const CATEGORIES = ['Сировина', 'Жири', 'Молочна продукція', 'Крохмалі', 'Какао-продукти', 'Пакування', 'Тара', 'Допоміжні матеріали', 'Інше'];
@@ -187,6 +187,7 @@ function showScreen(name) {
 
 function bindOrderEvents() {
   document.addEventListener('click', closeMoreActionsOnOutsideClick, true);
+  bindExclusiveMoreActions();
   $('#positionSearch').addEventListener('focus', renderSearchResults);
   $('#positionSearch').addEventListener('input', renderSearchResults);
   $('#clearSearchBtn').addEventListener('click', () => { $('#positionSearch').value = ''; hideSearchResults(); });
@@ -218,6 +219,17 @@ function bindOrderEvents() {
 
 function closeMoreActions() {
   $$('.more-actions[open]').forEach(menu => menu.removeAttribute('open'));
+}
+
+function bindExclusiveMoreActions() {
+  $$('.more-actions').forEach(menu => {
+    menu.addEventListener('toggle', () => {
+      if (!menu.open) return;
+      $$('.more-actions[open]').forEach(otherMenu => {
+        if (otherMenu !== menu) otherMenu.removeAttribute('open');
+      });
+    });
+  });
 }
 
 function closeMoreActionsOnOutsideClick(e) {
