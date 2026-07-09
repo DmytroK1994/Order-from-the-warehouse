@@ -1,401 +1,61 @@
-<style>
-/* v19: правка прокрутки верхніх блоків */
-.current-warehouse,
-.warehouse-switcher,
-.warehouse-selector,
-.order-warehouse,
-.warehouse-tabs,
-#warehouseSwitcher,
-#warehouseSelector,
-#activeWarehouseBox,
-[data-warehouse-switcher] {
-  position: static !important;
-  top: auto !important;
-  z-index: auto !important;
-}
-
-.sticky-header,
-.top-sticky,
-.search-sticky,
-.order-sticky,
-.current-order-sticky,
-.current-order-header,
-.order-header,
-.app-header,
-header {
-  background: #ffffff !important;
-}
-
-.sticky-header::before,
-.top-sticky::before,
-.search-sticky::before,
-.order-sticky::before,
-.current-order-sticky::before,
-.current-order-header::before,
-.order-header::before {
-  content: "";
-  position: absolute;
-  inset: -8px 0 -8px 0;
-  background: #ffffff;
-  z-index: -1;
-  pointer-events: none;
-}
-
-.search-panel,
-.search-row,
-.search-box,
-.quick-search,
-.catalog-filter,
-.filter-tabs {
-  background: #ffffff !important;
-}
-
-/* v20: точкова правка верхніх блоків без просвічування */
-
-/* Блок вибору складу НЕ має бути липким */
-section:has(#warehouseTabs),
-section:has(#warehouseList),
-section:has(#activeWarehouse),
-div:has(#warehouseTabs),
-div:has(#warehouseList),
-div:has(#activeWarehouse),
-#warehouseTabs,
-#warehouseList,
-#activeWarehouse,
-#warehouseTools,
-#warehouseControls,
-.warehouse-bar,
-.warehouse-panel,
-.warehouse-tools,
-.warehouse-controls,
-.warehouse-list,
-.warehouse-tabs,
-.warehouse-switcher,
-.warehouse-selector,
-.current-warehouse,
-.order-warehouse,
-.active-warehouse {
-  position: static !important;
-  top: auto !important;
-  bottom: auto !important;
-  z-index: auto !important;
-  transform: none !important;
-}
-
-/* Верхня зона має бути суцільною, без прозорих щілин */
-.app-shell,
-.main,
-main,
-.page,
-.page-content,
-.content,
-.order-page,
-.current-order-page,
-#orderPage,
-#currentOrderPage {
-  background: #ffffff !important;
-}
-
-/* Липка шапка/пошук — білий фон і нуль дірок між блоками */
-header,
-.app-header,
-.topbar,
-.top-bar,
-.page-header,
-.current-order-header,
-.order-header,
-.sticky-header,
-.search-sticky,
-.search-panel,
-.search-area,
-.search-box,
-.search-row,
-.filters,
-.filter-tabs,
-.catalog-filter {
-  background: #ffffff !important;
-  background-color: #ffffff !important;
-  box-shadow: none;
-}
-
-/* Прибираємо вертикальні розриви між: Поточне замовлення / Пошук / Замовлення на склад */
-.current-order-header,
-.order-header,
-.search-panel,
-.search-area,
-.search-box,
-.catalog-filter,
-.filter-tabs,
-.warehouse-panel,
-.warehouse-tools,
-.warehouse-controls,
-.warehouse-list,
-.warehouse-tabs,
-.warehouse-switcher,
-.warehouse-selector {
-  margin-top: 0 !important;
-  margin-bottom: 0 !important;
-}
-
-/* Якщо верхній контейнер липкий — робимо його єдиним білим полотном */
-.sticky-header,
-.search-sticky,
-.top-sticky,
-.order-sticky,
-.current-order-sticky {
-  background: #ffffff !important;
-  padding-bottom: 8px !important;
-  overflow: hidden !important;
-}
-
-/* Псевдофон перекриває просвічування під sticky-блоками */
-.sticky-header::after,
-.search-sticky::after,
-.top-sticky::after,
-.order-sticky::after,
-.current-order-sticky::after,
-.current-order-header::after,
-.order-header::after {
-  content: "";
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: -16px;
-  height: 20px;
-  background: #ffffff;
-  pointer-events: none;
-  z-index: -1;
-}
-
-/* Для контейнерів з position: sticky потрібен relative, щоб after працював */
-.sticky-header,
-.search-sticky,
-.top-sticky,
-.order-sticky,
-.current-order-sticky,
-.current-order-header,
-.order-header {
-  position: sticky;
-  background: #ffffff !important;
-}
-
-/* Але якщо в цей sticky випадково потрапив склад — відключаємо саме склад */
-#warehouseTabs,
-#warehouseList,
-#activeWarehouse,
-.warehouse-bar,
-.warehouse-panel,
-.warehouse-tools,
-.warehouse-controls,
-.warehouse-list,
-.warehouse-tabs,
-.warehouse-switcher,
-.warehouse-selector,
-.current-warehouse,
-.order-warehouse,
-.active-warehouse {
-  position: static !important;
-}
-
-/* Мобільний режим: без накладання блоків */
-@media (max-width: 768px) {
-  .current-order-header,
-  .order-header,
-  .search-panel,
-  .search-area,
-  .warehouse-panel,
-  .warehouse-tools,
-  .warehouse-controls {
-    border-radius: 0 !important;
-  }
-}
-
-
-/* stable v20+gapfix: прибираємо прозорий зазор між заголовком і пошуком, без зміни структури */
-.order-search-top,
-.current-order-header,
-.order-header,
-.top-search-wrap,
-.search-wrap,
-.search-panel,
-.search-area,
-.search-row {
-  background: #ffffff !important;
-  background-color: #ffffff !important;
-}
-
-.order-search-top,
-.current-order-header,
-.order-header {
-  margin-bottom: 0 !important;
-  padding-bottom: 8px !important;
-  border-bottom: 0 !important;
-  position: sticky;
-  z-index: 80 !important;
-}
-
-.top-search-wrap,
-.search-wrap {
-  margin-top: 0 !important;
-  padding-top: 0 !important;
-  position: sticky;
-  z-index: 81 !important;
-}
-
-/* Білий шар перекриває саме щілину, але не рухає блоки */
-.order-search-top::after,
-.current-order-header::after,
-.order-header::after {
-  content: "";
-  position: absolute;
-  left: -24px;
-  right: -24px;
-  bottom: -18px;
-  height: 24px;
-  background: #ffffff;
-  pointer-events: none;
-  z-index: -1;
-}
-
-/* Контейнер сторінки теж білий, щоб нічого не світилося знизу */
-main,
-.content,
-.page,
-.page-content,
-.order-page,
-.current-order-page,
-#orderPage,
-#currentOrderPage {
-  background: #ffffff !important;
-}
-
-
-/* v24: масове додавання позицій */
-.bulk-add-card {
-  margin: 12px 0 16px 0;
-}
-.bulk-add-card textarea {
-  width: 100%;
-  min-height: 160px;
-  resize: vertical;
-  font: inherit;
-  padding: 12px;
-  border: 1px solid var(--line, #d1d5db);
-  border-radius: 12px;
-  background: #fff;
-}
-.bulk-add-card .actions {
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-  margin-top: 10px;
-}
-
-
-/* v25: красивіший довідник позицій */
-#directory h2,
-#positions h2,
-#catalog h2,
-section:has(.bulk-add-card) > h2,
-.card:has(.bulk-add-card) > h2 {
-  text-align: center !important;
-  text-transform: uppercase;
-  font-size: 28px !important;
-  letter-spacing: .04em;
-  margin: 10px 0 22px 0 !important;
-}
-
-.bulk-add-card {
-  max-width: 860px;
-  margin: 0 auto 22px auto !important;
-  padding: 22px !important;
-  border-radius: 20px !important;
-  border: 1px solid var(--line, #d1d5db);
-  background: #ffffff;
-  box-shadow: 0 10px 30px rgba(15, 23, 42, .06);
-}
-
-.bulk-add-card h3 {
-  margin: 0 0 8px 0 !important;
-  text-align: center;
-  font-size: 22px;
-}
-
-.bulk-add-card .muted {
-  text-align: center;
-}
-
-.bulk-add-card textarea {
-  width: 100%;
-  min-height: 180px;
-  resize: vertical;
-  font: inherit;
-  font-size: 16px;
-  line-height: 1.45;
-  padding: 14px;
-  border: 1px solid var(--line, #d1d5db);
-  border-radius: 14px;
-  background: #fff;
-}
-
-.bulk-add-card .actions {
-  display: flex;
-  gap: 10px;
-  flex-wrap: wrap;
-  justify-content: center;
-  margin-top: 12px;
-}
-
-.bulk-add-card button {
-  min-height: 42px;
-}
-
-button.danger,
-.danger {
-  background: #dc2626 !important;
-  color: #ffffff !important;
-  border-color: #dc2626 !important;
-}
-
-button.danger:hover,
-.danger:hover {
-  filter: brightness(.95);
-}
-
-@media (max-width: 700px) {
-  #directory h2,
-  #positions h2,
-  #catalog h2,
-  section:has(.bulk-add-card) > h2,
-  .card:has(.bulk-add-card) > h2 {
-    font-size: 22px !important;
-  }
-
-  .bulk-add-card {
-    padding: 16px !important;
-    border-radius: 16px !important;
-  }
-
-  .bulk-add-card .actions {
-    display: grid;
-    grid-template-columns: 1fr;
-  }
-}
-
-</style>
 <!DOCTYPE html>
 <html lang="uk">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
   <meta name="theme-color" content="#ffffff" />
   <meta name="description" content="PWA-додаток для формування складських замовлень" />
   <link rel="manifest" href="manifest.json" />
   <link rel="apple-touch-icon" href="icons/icon-192.png" />
   <title>Замовлення зі складу</title>
-  <link rel="stylesheet" href="styles.css" />
+  <link rel="stylesheet" href="styles.css?v=42" />
 </head>
 <body>
+  <div id="startupSplash" class="startup-splash" role="status" aria-live="polite">
+    <div class="startup-stage">
+      <div class="startup-title">
+        <div class="startup-mark" aria-hidden="true">З</div>
+        <div class="startup-copy">
+          <strong>Замовлення зі складу</strong>
+          <span>Кіт звіряє склад і готує заявку</span>
+        </div>
+      </div>
+
+      <div class="startup-warehouse" aria-hidden="true">
+        <div class="warehouse-sign">СКЛАД</div>
+        <div class="warehouse-shelf shelf-a"><span></span><span></span><span></span></div>
+        <div class="warehouse-shelf shelf-b"><span></span><span></span><span></span></div>
+      </div>
+
+      <div class="startup-sheet" aria-hidden="true">
+        <div class="startup-sheet-head"></div>
+        <div class="startup-row row-a"></div>
+        <div class="startup-row row-b"></div>
+        <div class="startup-row row-c"></div>
+        <div class="startup-row row-d"></div>
+        <div class="startup-check"></div>
+      </div>
+
+      <div class="startup-cat" aria-hidden="true">
+        <div class="cat-tail"></div>
+        <div class="cat-body"></div>
+        <div class="cat-head">
+          <span class="cat-ear ear-a"></span>
+          <span class="cat-ear ear-b"></span>
+          <span class="cat-eye eye-a"></span>
+          <span class="cat-eye eye-b"></span>
+          <span class="cat-nose"></span>
+        </div>
+        <div class="cat-paw paw-a"></div>
+        <div class="cat-paw paw-b"></div>
+      </div>
+
+      <div class="startup-progress" aria-hidden="true">
+        <span></span>
+      </div>
+    </div>
+  </div>
+
   <header class="topbar">
     <button id="openGlobalNavMenuBtn" class="ghost icon-btn top-menu-btn" type="button" title="Меню">☰</button>
     <div class="brand">
@@ -406,7 +66,6 @@ button.danger:hover,
       </div>
     </div>
     <div class="top-actions">
-      <button id="undoBtn" class="ghost" title="Скасувати останню дію">↶</button>
       <button id="installBtn" class="primary hidden">Встановити</button>
     </div>
   </header>
@@ -426,20 +85,34 @@ button.danger:hover,
         <section class="panel order-panel unified-order-panel">
           <div class="order-search-top">
             <h2>Поточне замовлення</h2>
-            <span id="draftBadge" class="badge">Чернетка</span>
+            <div class="order-head-actions">
+              <span id="draftBadge" class="badge">Чернетка</span>
+              <button id="pdfBtn" class="ghost text-action" type="button" title="PDF / друк" aria-label="PDF / друк">PDF / друк</button>
+              <details class="more-actions export-actions">
+                <summary class="ghost icon-action" title="Вивантажити документ" aria-label="Вивантажити документ">↓</summary>
+                <div class="more-actions-menu">
+                  <button id="exportWordBtn" class="ghost" type="button" title="Вивантажити Word-документ">Word</button>
+                  <button id="exportExcelBtn" class="ghost" type="button" title="Вивантажити Excel-таблицю">Excel</button>
+                </div>
+              </details>
+              <button id="newOrderBtn" class="primary icon-action" type="button" title="Створити нове замовлення" aria-label="Створити нове замовлення">+</button>
+              <details class="more-actions">
+                <summary class="ghost icon-action" title="Додаткові дії" aria-label="Додаткові дії">⋯</summary>
+                <div class="more-actions-menu">
+                  <button id="copyTextBtn" class="ghost" type="button" title="Копіювати текст замовлення">Копіювати текст</button>
+                  <button id="copyTableBtn" class="ghost" type="button" title="Копіювати таблицю для Excel">Копіювати таблицю</button>
+                  <button id="saveHistoryBtn" class="ghost" type="button" title="Зберегти замовлення в історію">Зберегти</button>
+                  <button id="shareBtn" class="ghost" type="button" title="Поділитися замовленням">Поділитися</button>
+                  <button id="clearOrderBtn" class="danger" type="button" title="Очистити поточне замовлення">Очистити замовлення</button>
+                </div>
+              </details>
+            </div>
           </div>
 
           <div class="search-wrap top-search-wrap">
             <input id="positionSearch" type="search" placeholder="Пошук позиції або категорії…" autocomplete="off" />
             <button id="clearSearchBtn" class="ghost">Очистити</button>
             <div id="searchResults" class="search-results hidden"></div>
-          </div>
-
-          <div class="quick-filters">
-            <button class="chip active" data-filter="all">Усі</button>
-            <button class="chip" data-filter="favorites">Обрані</button>
-            <button class="chip" data-filter="top10">ТОП-10</button>
-            <button class="chip" data-filter="top20">ТОП-20</button>
           </div>
 
           <div class="warehouse-control">
@@ -452,11 +125,6 @@ button.danger:hover,
             </div>
             <div id="warehouseTabs" class="warehouse-tabs"></div>
           </div>
-
-          <details class="quick-list-box">
-            <summary>Швидке додавання</summary>
-            <div id="quickList" class="quick-list"></div>
-          </details>
 
             <form id="orderMetaForm" class="meta-grid">
               <label class="wide">Замовлення на<input id="orderDate" type="date" required /></label>
@@ -478,33 +146,25 @@ button.danger:hover,
               <span>Термінових: <b id="urgentItems">0</b></span>
             </div>
 
-            <div class="action-grid">
-              <button id="copyTextBtn" class="primary">Копіювати текст</button>
-              <button id="copyTableBtn" class="primary">Копіювати таблицю</button>
-              <button id="saveHistoryBtn" class="success">Зберегти</button>
-              <button id="pdfBtn" class="primary">PDF / Друк</button>
-              <button id="shareBtn" class="primary">Поділитися</button>
-              <button id="printBtn" class="ghost hidden" type="button" aria-hidden="true">Друк</button>
-              <button id="clearOrderBtn" class="danger">Очистити</button>
-            </div>
         </section>
       </section>
 
-      <section id="screen-directory" class="screen panel">
-        <div class="panel-head"><h2>ДОВІДНИК ПОЗИЦІЙ</h2>
+      <section id="screen-directory" class="screen panel directory-panel">
+        <div class="panel-head">
+          <h2>Довідник позицій</h2>
+        </div>
 
-          <div class="card bulk-add-card">
-            <h3>Масове додавання позицій</h3>
-            <p class="muted">Встав список з Excel: один рядок — одна позиція. Порожні рядки і дублікати пропускаються.</p>
-            <textarea id="bulkPositionsInput" rows="8" placeholder="Назва позиції 1&#10;Назва позиції 2&#10;Назва позиції 3"></textarea>
-            <div class="actions">
-              <button id="bulkAddPositionsBtn" class="primary" type="button">Додати список</button>
-              <button id="bulkClearPositionsBtn" class="ghost" type="button">Очистити поле</button>
-              <button id="deleteAllPositionsBtn" class="danger" type="button">Видалити всі позиції</button>
-            </div>
-            
+        <div class="bulk-add-card">
+          <h3>Додати товар</h3>
+          <p class="hint">Можна вписати одну позицію або вставити список: один рядок - один товар.</p>
+          <textarea id="bulkPositionsInput" rows="5" placeholder="Назва товару&#10;Ще один товар"></textarea>
+          <div class="actions">
+            <button id="bulkAddPositionsBtn" class="primary" type="button">Додати</button>
+            <button id="bulkClearPositionsBtn" class="ghost" type="button">Очистити</button>
           </div>
-<button id="addPositionBtn" class="primary">Додати позицію</button></div>
+          <div id="bulkAddResult" class="meta" aria-live="polite"></div>
+        </div>
+
         <input id="directorySearch" class="full-input" type="search" placeholder="Пошук у довіднику…" />
         <div id="directoryList" class="cards"></div>
       </section>
@@ -525,8 +185,27 @@ button.danger:hover,
         <div class="settings-grid">
           <label>Відповідальний за замовчуванням<input id="defaultResponsible" type="text" /></label>
           <label>Підпис у PDF<input id="pdfSignature" type="text" placeholder="ПІБ або посада" /></label>
+          <label class="check-row"><input id="autoNewDay" type="checkbox" /> Нове замовлення щодня</label>
+          <label class="check-row"><input id="autoUpdateCache" type="checkbox" /> Перевіряти оновлення раз на день</label>
         </div>
         <button id="saveSettingsBtn" class="success">Зберегти налаштування</button>
+        <section class="about-box">
+          <h3>Про додаток</h3>
+          <p class="hint">Дані товарів, історія, шаблони й налаштування зберігаються локально на цьому пристрої. Резервна копія потрібна для перенесення на інший телефон або компʼютер.</p>
+          <p class="hint">Якщо після правок відкривається стара версія, натисни “Оновити додаток”. Це очищає кеш програми, але не видаляє товари й історію.</p>
+          <div class="install-guide">
+            <h4>Як встановити</h4>
+            <p><b>Android Chrome:</b> меню браузера → “Встановити додаток” або “Додати на головний екран”.</p>
+            <p><b>iPhone / iPad Safari:</b> кнопка “Поділитися” → “На екран Домівки”. Автоматична кнопка встановлення на iOS недоступна.</p>
+            <p><b>Windows Chrome / Edge:</b> значок встановлення в адресному рядку або меню браузера → “Install app”.</p>
+            <p><b>Mac Chrome / Edge:</b> значок встановлення в адресному рядку. У Safari можна додати сторінку на Dock, якщо браузер це пропонує.</p>
+          </div>
+          <div class="about-actions">
+            <button id="installAppBtn" class="success" type="button" title="Встановити PWA, якщо браузер це підтримує">Встановити додаток</button>
+            <button id="refreshAppBtn" class="primary" type="button" title="Очистити кеш і завантажити свіжу версію">Оновити додаток</button>
+          </div>
+          <div id="appInfo" class="meta"></div>
+        </section>
         <h3>Журнал останніх дій</h3>
         <div id="actionsLog" class="log"></div>
       </section>
@@ -534,14 +213,12 @@ button.danger:hover,
       <section id="screen-data" class="screen panel">
         <h2>Імпорт / експорт даних</h2>
         <div class="action-grid data-actions">
-          <button id="exportAllBtn" class="primary">Експорт усіх даних JSON</button>
-          <button id="exportDirectoryBtn" class="primary">Експорт довідника</button>
-          <button id="exportHistoryBtn" class="primary">Експорт історії</button>
-          <label class="file-btn">Імпорт JSON<input id="importFile" type="file" accept="application/json" hidden /></label>
-          <button id="backupBtn" class="success">Резервна копія</button>
-          <button id="wipeDataBtn" class="danger">Повне очищення</button>
+          <button id="backupBtn" class="success" type="button">Зберегти резервну копію</button>
+          <button id="restoreBackupBtn" class="primary" type="button">Відновити резервну копію</button>
+          <input id="importFile" class="hidden-file-input" type="file" accept="application/json" />
+          <button id="wipeDataBtn" class="danger" type="button">Повне очищення</button>
         </div>
-        <p class="hint">Дані зберігаються локально на цьому пристрої. Експорт JSON — твоя страховка, бо localStorage не бетонний сейф, а просто нормальна шафка. 🙂</p>
+        <p class="hint">Резервна копія зберігає товари, поточне замовлення, історію, шаблони та налаштування. Її можна перенести на флешку або інший пристрій і потім імпортувати назад.</p>
       </section>
     </main>
   </div>
@@ -630,258 +307,7 @@ button.danger:hover,
   </dialog>
 
   <template id="printTemplate"></template>
-  <script src="app.js"></script>
-
-<script>
-/* v24: масове додавання позицій у довідник */
-(function () {
-  function normalizeName(s) {
-    return String(s || "")
-      .replace(/\t+/g, " ")
-      .replace(/\s+/g, " ")
-      .trim();
-  }
-
-  function getStorageKeys() {
-    const keys = [];
-    for (let i = 0; i < localStorage.length; i++) {
-      const k = localStorage.key(i);
-      if (k) keys.push(k);
-    }
-    return keys;
-  }
-
-  function findPositionsKey() {
-    const preferred = [
-      "warehouse_order_positions",
-      "warehouseOrderPositions",
-      "positions",
-      "catalog",
-      "items",
-      "directory"
-    ];
-    for (const k of preferred) {
-      try {
-        const v = JSON.parse(localStorage.getItem(k) || "null");
-        if (Array.isArray(v)) return k;
-      } catch {}
-    }
-
-    for (const k of getStorageKeys()) {
-      try {
-        const v = JSON.parse(localStorage.getItem(k) || "null");
-        if (Array.isArray(v) && v.length && typeof v[0] === "object") {
-          const sample = v[0];
-          if ("name" in sample || "title" in sample || "label" in sample) return k;
-        }
-      } catch {}
-    }
-    return null;
-  }
-
-  function getGlobalPositionsArray() {
-    const candidates = ["positions", "catalog", "items", "directoryItems", "PRODUCTS", "DEFAULT_POSITIONS"];
-    for (const name of candidates) {
-      try {
-        if (Array.isArray(window[name])) return window[name];
-      } catch {}
-    }
-    return null;
-  }
-
-  function makePosition(name, sample) {
-    const id = "p_" + Date.now().toString(36) + "_" + Math.random().toString(36).slice(2, 7);
-    if (sample && typeof sample === "object" && !Array.isArray(sample)) {
-      const obj = {};
-      for (const key of Object.keys(sample)) {
-        if (key === "id") obj[key] = id;
-        else if (key === "name" || key === "title" || key === "label") obj[key] = name;
-        else if (key === "category") obj[key] = sample[key] || "Без категорії";
-        else if (key === "unit") obj[key] = sample[key] || "кг";
-        else if (key === "favorite") obj[key] = false;
-        else obj[key] = (typeof sample[key] === "string" ? "" : sample[key]);
-      }
-      if (!("id" in obj)) obj.id = id;
-      if (!("name" in obj) && !("title" in obj) && !("label" in obj)) obj.name = name;
-      if (!("unit" in obj)) obj.unit = "кг";
-      if (!("category" in obj)) obj.category = "Без категорії";
-      return obj;
-    }
-    return { id, name, category: "Без категорії", unit: "кг", favorite: false };
-  }
-
-  function getName(item) {
-    if (typeof item === "string") return item;
-    if (!item || typeof item !== "object") return "";
-    return item.name || item.title || item.label || "";
-  }
-
-  function saveAndRefresh(key, arr) {
-    if (key) localStorage.setItem(key, JSON.stringify(arr));
-
-    // Try common render/update hooks without crashing app.
-    const hooks = [
-      "renderCatalog", "renderPositions", "renderDirectory", "renderPositionList",
-      "renderSearchResults", "refreshCatalog", "refreshPositions", "saveData", "persistData"
-    ];
-    hooks.forEach(fn => {
-      try {
-        if (typeof window[fn] === "function") window[fn]();
-      } catch {}
-    });
-
-    window.dispatchEvent(new CustomEvent("positions:updated", { detail: { count: arr.length } }));
-  }
-
-  function bulkAddPositions() {
-    const input = document.getElementById("bulkPositionsInput");
-    const result = document.getElementById("bulkAddResult");
-    if (!input) return;
-
-    const lines = input.value
-      .split(/\r?\n/)
-      .map(normalizeName)
-      .filter(Boolean);
-
-    const uniqueInput = [];
-    const seenInput = new Set();
-    lines.forEach(name => {
-      const key = name.toLowerCase();
-      if (!seenInput.has(key)) {
-        seenInput.add(key);
-        uniqueInput.push(name);
-      }
-    });
-
-    if (!uniqueInput.length) {
-      if (result) result.textContent = "Немає позицій для додавання.";
-      return;
-    }
-
-    let key = findPositionsKey();
-    let arr = null;
-
-    if (key) {
-      try { arr = JSON.parse(localStorage.getItem(key) || "[]"); } catch { arr = []; }
-    }
-
-    if (!Array.isArray(arr)) arr = getGlobalPositionsArray();
-    if (!Array.isArray(arr)) arr = [];
-
-    const existing = new Set(arr.map(getName).map(normalizeName).filter(Boolean).map(x => x.toLowerCase()));
-    const sample = arr.find(x => x && typeof x === "object") || null;
-
-    let added = 0;
-    let skipped = 0;
-
-    uniqueInput.forEach(name => {
-      const low = name.toLowerCase();
-      if (existing.has(low)) {
-        skipped++;
-        return;
-      }
-      arr.push(makePosition(name, sample));
-      existing.add(low);
-      added++;
-    });
-
-    if (!key) {
-      key = "warehouse_order_positions";
-    }
-
-    saveAndRefresh(key, arr);
-
-    if (result) result.textContent = `Додано: ${added}. Пропущено дублікатів: ${skipped}.`;
-    if (added) input.value = "";
-  }
-
-  function bindBulkAdd() {
-    const addBtn = document.getElementById("bulkAddPositionsBtn");
-    const clearBtn = document.getElementById("bulkClearPositionsBtn");
-    if (addBtn && !addBtn.dataset.bound) {
-      addBtn.dataset.bound = "1";
-      addBtn.addEventListener("click", bulkAddPositions);
-    }
-    if (clearBtn && !clearBtn.dataset.bound) {
-      clearBtn.dataset.bound = "1";
-      clearBtn.addEventListener("click", function () {
-        const input = document.getElementById("bulkPositionsInput");
-        const result = document.getElementById("bulkAddResult");
-        if (input) input.value = "";
-        if (result) result.textContent = "";
-      });
-    }
-  }
-
-  document.addEventListener("DOMContentLoaded", bindBulkAdd);
-  setTimeout(bindBulkAdd, 300);
-})();
-</script>
-
-
-
-
-
-<script>
-/* v26: прибираємо демо-позиції, які були вшиті в попередні версії */
-(function () {
-  const demoNames = new Set([
-    "глюкоза",
-    "какао 470",
-    "какао-порошок gt50",
-    "жир для фритюра",
-    "жир acocream"
-  ]);
-
-  function getName(item) {
-    if (typeof item === "string") return item;
-    if (!item || typeof item !== "object") return "";
-    return item.name || item.title || item.label || "";
-  }
-
-  function normalize(s) {
-    return String(s || "").trim().replace(/\s+/g, " ").toLowerCase();
-  }
-
-  function cleanCatalogArray(arr) {
-    if (!Array.isArray(arr)) return arr;
-    return arr.filter(item => !demoNames.has(normalize(getName(item))));
-  }
-
-  function cleanStorage() {
-    const keys = [];
-    for (let i = 0; i < localStorage.length; i++) {
-      const k = localStorage.key(i);
-      if (k) keys.push(k);
-    }
-
-    keys.forEach(k => {
-      try {
-        const raw = localStorage.getItem(k);
-        const parsed = JSON.parse(raw);
-        if (!Array.isArray(parsed)) return;
-
-        const looksLikeCatalog = parsed.some(x => {
-          const n = normalize(getName(x));
-          return demoNames.has(n) || (x && typeof x === "object" && ("name" in x || "title" in x || "label" in x));
-        });
-
-        if (!looksLikeCatalog) return;
-
-        const cleaned = cleanCatalogArray(parsed);
-        if (cleaned.length !== parsed.length) {
-          localStorage.setItem(k, JSON.stringify(cleaned));
-        }
-      } catch {}
-    });
-  }
-
-  document.addEventListener("DOMContentLoaded", cleanStorage);
-})();
-</script>
-
-
-
+  <script src="app.js?v=42"></script>
 
 </body>
 </html>

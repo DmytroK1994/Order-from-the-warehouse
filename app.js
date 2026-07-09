@@ -2,6 +2,8 @@
 
 // PWA-додаток без фреймворків. Усі дані зберігаються локально у localStorage.
 const STORAGE_KEY = 'warehouse_order_pwa_v1';
+const APP_VERSION = 'v42';
+const CORE_ASSETS = ['./', './index.html', './styles.css', './app.js', './manifest.json'];
 const UNITS = ['кг', 'г', 'т', 'шт', 'мішки', 'коробки', 'ящики', 'піддони', 'літри', 'власна одиниця'];
 const CATEGORIES = ['Сировина', 'Жири', 'Молочна продукція', 'Крохмалі', 'Какао-продукти', 'Пакування', 'Тара', 'Допоміжні матеріали', 'Інше'];
 const URGENCY = ['звичайно', 'важливо', 'терміново', 'критично'];
@@ -23,12 +25,16 @@ const DEFAULT_POSITIONS = [
 const $ = s => document.querySelector(s);
 const $$ = s => [...document.querySelectorAll(s)];
 const uid = () => crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(16).slice(2)}`;
-const today = () => new Date().toISOString().slice(0, 10);
+const today = () => {
+  const d = new Date();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${d.getFullYear()}-${m}-${day}`;
+};
 const nowTime = () => new Date().toTimeString().slice(0, 5);
 
 let state = loadState();
 let deferredPrompt = null;
-let currentFilter = 'all';
 let draggedIndex = null;
 
 function loadState() {
@@ -62,6 +68,8 @@ function migrateState(data) {
   data.templates ||= [];
   data.templates.forEach(t => (t.items || []).forEach(i => { i.warehouse ||= '1711'; }));
   data.settings ||= {};
+  if (data.settings.autoNewDay === undefined) data.settings.autoNewDay = true;
+  if (data.settings.autoUpdateCache === undefined) data.settings.autoUpdateCache = true;
   delete data.settings.defaultShift;
   data.actions ||= [];
   return data;
@@ -92,6 +100,7 @@ function sortedPositions() { return [...state.positions].sort((a, b) => a.name.l
 
 function init() {
   fillSelects();
+  rolloverOrderForNewDay();
   initMeta();
   bindNavigation();
   bindOrderEvents();
@@ -101,11 +110,26 @@ function init() {
   bindDataEvents();
   bindHotkeys();
   bindPWA();
+  checkDailyAppUpdate();
   restoreDraftNotice();
   renderAll();
+  finishStartupAnimation();
 }
 
 document.addEventListener('DOMContentLoaded', init);
+
+function finishStartupAnimation() {
+  const splash = $('#startupSplash');
+  if (!splash) return;
+  const close = () => {
+    splash.classList.add('is-hiding');
+    setTimeout(() => splash.remove(), 420);
+  };
+  splash.addEventListener('click', close, { once: true });
+  splash.addEventListener('touchstart', close, { once: true, passive: true });
+  const reducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches;
+  setTimeout(close, reducedMotion ? 900 : 4200);
+}
 
 function fillSelects() {
   ['#positionCategory'].forEach(sel => $(sel).innerHTML = CATEGORIES.map(v => `<option>${v}</option>`).join(''));
@@ -162,11 +186,11 @@ function showScreen(name) {
 }
 
 function bindOrderEvents() {
+  document.addEventListener('click', closeMoreActionsOnOutsideClick, true);
   $('#positionSearch').addEventListener('focus', renderSearchResults);
   $('#positionSearch').addEventListener('input', renderSearchResults);
-  $('#clearSearchBtn').addEventListener('click', () => { $('#positionSearch').value = ''; renderSearchResults(); });
-  document.addEventListener('click', e => { if (!e.target.closest('.search-wrap')) $('#searchResults').classList.add('hidden'); });
-  $$('.chip').forEach(c => c.addEventListener('click', () => { currentFilter = c.dataset.filter; $$('.chip').forEach(x => x.classList.remove('active')); c.classList.add('active'); renderQuickList(); }));
+  $('#clearSearchBtn').addEventListener('click', () => { $('#positionSearch').value = ''; hideSearchResults(); });
+  document.addEventListener('click', e => { if (!e.target.closest('.search-wrap')) hideSearchResults(); });
   $('#addWarehouseBtn')?.addEventListener('click', addWarehouse);
   $('#manageWarehousesBtn')?.addEventListener('click', openWarehouseManager);
   $('#closeWarehouseModal')?.addEventListener('click', () => $('#warehouseModal')?.close());
@@ -176,8 +200,12 @@ function bindOrderEvents() {
   $('#copyTextBtn').addEventListener('click', () => copyText(formatOrderText()));
   $('#copyTableBtn').addEventListener('click', () => copyText(formatOrderTable()));
   $('#saveHistoryBtn').addEventListener('click', saveToHistory);
+  $$('.more-actions-menu button').forEach(btn => btn.addEventListener('click', () => btn.closest('details')?.removeAttribute('open')));
   const pdfBtn = $('#pdfBtn');
   if (pdfBtn) pdfBtn.addEventListener('click', exportPDF);
+  $('#exportWordBtn')?.addEventListener('click', () => exportEditableDocument('word'));
+  $('#exportExcelBtn')?.addEventListener('click', () => exportEditableDocument('excel'));
+  $('#newOrderBtn')?.addEventListener('click', createNewOrder);
   $('#shareBtn').addEventListener('click', shareOrder);
   const printBtn = $('#printBtn');
   if (printBtn) printBtn.addEventListener('click', () => exportPDF());
@@ -186,7 +214,15 @@ function bindOrderEvents() {
   $('#sortCategoryBtn').addEventListener('click', () => { snapshot(); state.currentOrder.items.sort((a,b)=>`${a.category}${a.name}`.localeCompare(`${b.category}${b.name}`,'uk')); markDirty(); renderOrderItems(); });
   $('#clearCommentsBtn').addEventListener('click', () => { snapshot(); state.currentOrder.items.forEach(i => i.comment = ''); markDirty(); renderOrderItems(); });
   $('#duplicateOrderBtn').addEventListener('click', () => { snapshot(); state.currentOrder.items = state.currentOrder.items.map(i => ({...i, id: uid()})); markDirty(); renderOrderItems(); });
-  $('#undoBtn').addEventListener('click', undo);
+}
+
+function closeMoreActions() {
+  $$('.more-actions[open]').forEach(menu => menu.removeAttribute('open'));
+}
+
+function closeMoreActionsOnOutsideClick(e) {
+  if (e.target.closest('.more-actions')) return;
+  closeMoreActions();
 }
 
 function renderSearchResults() {
@@ -194,17 +230,13 @@ function renderSearchResults() {
   const results = sortedPositions().filter(p => !q || normalize(`${p.name} ${p.category}`).includes(q));
   $('#searchResults').innerHTML = results.map(p => `<button class="result-row" data-add="${p.id}"><span class="result-title">${escapeHtml(p.name)}</span><span class="meta">${p.category} • ${p.unit}</span></button>`).join('') || '<div class="result-row">Нічого не знайдено</div>';
   $('#searchResults').classList.remove('hidden');
+  document.body.classList.add('search-open');
   $$('[data-add]').forEach(b => b.addEventListener('click', () => openItemModalByPosition(b.dataset.add)));
 }
 
-function renderQuickList() {
-  let list = sortedPositions();
-  if (currentFilter === 'favorites') list = list.filter(p => p.favorite);
-  if (currentFilter === 'top10') list = [...state.positions].sort((a,b)=>b.usage-a.usage).slice(0,10);
-  if (currentFilter === 'top20') list = [...state.positions].sort((a,b)=>b.usage-a.usage).slice(0,20);
-  $('#quickList').innerHTML = list.map(p => `<div class="quick-card"><div><b>${escapeHtml(p.name)}</b><div class="meta">${p.category} • ${p.unit} • використано: ${p.usage || 0}</div></div><div class="card-actions"><button class="primary" data-add="${p.id}">Додати</button><button class="ghost" data-fav="${p.id}">${p.favorite ? '★' : '☆'}</button></div></div>`).join('');
-  $$('[data-add]').forEach(b => b.addEventListener('click', () => openItemModalByPosition(b.dataset.add)));
-  $$('[data-fav]').forEach(b => b.addEventListener('click', () => toggleFavorite(b.dataset.fav)));
+function hideSearchResults() {
+  $('#searchResults').classList.add('hidden');
+  document.body.classList.remove('search-open');
 }
 
 function openItemModalByPosition(id) {
@@ -218,6 +250,7 @@ function openItemModalByPosition(id) {
   $('#itemComment').value = '';
   $('#itemUrgency').value = 'звичайно';
   $('#itemNeedDate').value = state.currentOrder.meta.date || today();
+  hideSearchResults();
   $('#itemModal').showModal();
   setTimeout(() => $('#itemQty').focus(), 60);
 }
@@ -414,10 +447,20 @@ function reorder(from, to) { snapshot(); const [it] = state.currentOrder.items.s
 function toggleFavorite(id) { const p = state.positions.find(x => x.id === id); if (p) { p.favorite = !p.favorite; saveState('Змінено обране'); renderAll(); } }
 
 function bindDirectoryEvents() {
-  $('#addPositionBtn').addEventListener('click', () => openPositionModal());
   $('#positionForm').addEventListener('submit', savePosition);
   $('#closePositionModal').addEventListener('click', () => $('#positionModal').close());
   $('#directorySearch').addEventListener('input', renderDirectory);
+  const bulkAddBtn = $('#bulkAddPositionsBtn');
+  const bulkClearBtn = $('#bulkClearPositionsBtn');
+  if (bulkAddBtn) {
+    bulkAddBtn.dataset.bound = '1';
+    bulkAddBtn.addEventListener('click', addPositionsFromText);
+  }
+  if (bulkClearBtn) bulkClearBtn.dataset.bound = '1';
+  bulkClearBtn?.addEventListener('click', () => {
+    $('#bulkPositionsInput').value = '';
+    $('#bulkAddResult').textContent = '';
+  });
 }
 function openPositionModal(p = null) {
   $('#modalTitle').textContent = p ? 'Редагувати позицію' : 'Нова позиція';
@@ -438,10 +481,63 @@ function savePosition(e) {
 function renderDirectory() {
   const q = normalize($('#directorySearch').value);
   const list = sortedPositions().filter(p => !q || normalize(`${p.name} ${p.category} ${p.note}`).includes(q));
-  $('#directoryList').innerHTML = list.map(p => `<div class="record-card"><b>${escapeHtml(p.name)} ${Date.now() - (p.createdAt || 0) < 604800000 ? '<span class="badge">нова</span>' : ''}</b><div class="meta">${p.category} • ${p.unit}</div><p class="hint">${escapeHtml(p.note || '')}</p><div class="card-actions"><button class="ghost" data-fav="${p.id}">${p.favorite ? '★ Обране' : '☆ В обране'}</button><button class="primary" data-edit-pos="${p.id}">Редагувати</button><button class="danger" data-del-pos="${p.id}">Видалити</button></div></div>`).join('');
+  $('#directoryList').innerHTML = list.map(p => `<div class="record-card"><b>${escapeHtml(p.name)} ${Date.now() - (p.createdAt || 0) < 604800000 ? '<span class="badge">нова</span>' : ''}</b><div class="meta">${p.category} • ${p.unit}</div><p class="hint">${escapeHtml(p.note || '')}</p><div class="card-actions"><button class="primary" data-edit-pos="${p.id}">Редагувати</button><button class="danger" data-del-pos="${p.id}">Видалити</button></div></div>`).join('');
   $$('[data-edit-pos]').forEach(b => b.addEventListener('click', () => openPositionModal(state.positions.find(p => p.id === b.dataset.editPos))));
   $$('[data-del-pos]').forEach(b => b.addEventListener('click', () => { if(confirmAction('Видалити позицію з довідника?')) { snapshot(); state.positions = state.positions.filter(p => p.id !== b.dataset.delPos); saveState('Видалено позицію з довідника'); renderAll(); }}));
-  $$('[data-fav]').forEach(b => b.addEventListener('click', () => toggleFavorite(b.dataset.fav)));
+}
+
+function addPositionsFromText() {
+  const input = $('#bulkPositionsInput');
+  const result = $('#bulkAddResult');
+  const names = input.value
+    .split(/\r?\n/)
+    .map(v => v.trim().replace(/\s+/g, ' '))
+    .filter(Boolean);
+
+  const uniqueNames = [];
+  const seenInput = new Set();
+  names.forEach(name => {
+    const key = normalize(name);
+    if (!seenInput.has(key)) {
+      seenInput.add(key);
+      uniqueNames.push(name);
+    }
+  });
+
+  if (!uniqueNames.length) {
+    result.textContent = 'Впиши назву товару або встав список.';
+    return;
+  }
+
+  snapshot();
+  const existing = new Set(state.positions.map(p => normalize(p.name)));
+  let added = 0;
+  let skipped = 0;
+
+  uniqueNames.forEach(name => {
+    const key = normalize(name);
+    if (existing.has(key)) {
+      skipped++;
+      return;
+    }
+    state.positions.push({
+      id: uid(),
+      name,
+      category: 'Сировина',
+      unit: 'кг',
+      note: '',
+      favorite: false,
+      usage: 0,
+      createdAt: Date.now()
+    });
+    existing.add(key);
+    added++;
+  });
+
+  saveState('Додано товари в довідник');
+  input.value = '';
+  result.textContent = `Додано: ${added}. Пропущено дублікатів: ${skipped}.`;
+  renderAll();
 }
 
 function bindTemplateEvents() { $('#saveTemplateBtn').addEventListener('click', saveTemplate); }
@@ -461,25 +557,78 @@ function renderTemplates() {
 function loadTemplate(id) { const t = state.templates.find(x=>x.id===id); if (!t) return; snapshot(); state.currentOrder.items = structuredClone(t.items).map(i=>({...i,id:uid()})); state.currentOrder.warehouses = t.warehouses || orderWarehouses({items: state.currentOrder.items, warehouses: []}); state.currentOrder.activeWarehouse = t.activeWarehouse || state.currentOrder.warehouses[0] || '1711'; markDirty(); showScreen('order'); renderAll(); }
 
 function bindHistoryEvents() { $('#historySearch').addEventListener('input', renderHistory); $('#clearHistoryBtn').addEventListener('click', () => { if(confirmAction('Очистити всю історію?')) { snapshot(); state.history=[]; saveState('Очищено історію'); renderHistory(); }}); }
-function saveToHistory() {
+function historyRecordFromCurrentOrder() {
   readMetaFromForm();
   if (!state.currentOrder.meta.date || !state.currentOrder.meta.responsible) return alert('Заповни дату замовлення і відповідального.');
   if (!state.currentOrder.items.length) return alert('Додай хоча б одну позицію. Порожня заявка — це вже філософія, не виробництво.');
+  return { id: uid(), createdAt: new Date().toISOString(), meta: structuredClone(state.currentOrder.meta), activeWarehouse: state.currentOrder.activeWarehouse, warehouses: structuredClone(orderWarehouses()), items: structuredClone(state.currentOrder.items) };
+}
+function saveToHistory() {
+  const record = historyRecordFromCurrentOrder();
+  if (!record) return;
   snapshot();
-  state.history.unshift({ id: uid(), createdAt: new Date().toISOString(), meta: structuredClone(state.currentOrder.meta), activeWarehouse: state.currentOrder.activeWarehouse, warehouses: structuredClone(orderWarehouses()), items: structuredClone(state.currentOrder.items) });
+  state.history.unshift(record);
   state.currentOrder.dirty = false; saveState('Замовлення збережено в історію'); renderAll(); alert('Замовлення збережено.');
+}
+function archiveCurrentOrderSilently(reason) {
+  if (!state.currentOrder.items.length) return false;
+  const meta = state.currentOrder.meta || {};
+  if (!meta.date) meta.date = today();
+  state.history.unshift({ id: uid(), createdAt: new Date().toISOString(), meta: structuredClone(meta), activeWarehouse: state.currentOrder.activeWarehouse, warehouses: structuredClone(orderWarehouses()), items: structuredClone(state.currentOrder.items) });
+  saveState(reason);
+  return true;
+}
+function blankOrder(date = today()) {
+  return { meta: { date, responsible: state.settings.defaultResponsible || '', notes: '' }, items: [], dirty: false, activeWarehouse: '1711', warehouses: ['1711', '1719'] };
+}
+function createNewOrder() {
+  const hasItems = state.currentOrder.items.length > 0;
+  const message = hasItems
+    ? 'Створити нове замовлення? Поточне замовлення буде збережено в історію.'
+    : 'Створити нове порожнє замовлення?';
+  if (!confirmAction(message)) return;
+  snapshot();
+  if (hasItems) archiveCurrentOrderSilently('Поточне замовлення збережено перед створенням нового');
+  state.currentOrder = blankOrder();
+  syncMetaToForm();
+  saveState('Створено нове замовлення');
+  renderAll();
+}
+function rolloverOrderForNewDay() {
+  if (state.settings.autoNewDay === false) return;
+  const orderDate = state.currentOrder?.meta?.date;
+  const todayValue = today();
+  if (!orderDate || orderDate === todayValue) return;
+  if (state.currentOrder.items?.length) archiveCurrentOrderSilently('Автоматично збережено замовлення попереднього дня');
+  state.currentOrder = blankOrder(todayValue);
+  saveState('Автоматично створено замовлення на новий день');
 }
 function renderHistory() {
   const q = normalize($('#historySearch').value);
   const list = state.history.filter(h => !q || normalize(`${h.meta.date} ${h.meta.responsible}`).includes(q));
-  $('#historyList').innerHTML = list.map(h => `<div class="record-card"><b>Замовлення на: ${h.meta.date}</b><div class="meta">Відповідальний: ${escapeHtml(h.meta.responsible || '-')} • позицій: ${h.items.length}</div><div class="card-actions"><button class="primary" data-view-h="${h.id}">Перегляд</button><button class="success" data-load-h="${h.id}">Дублювати як нове</button><button class="ghost" data-copy-h="${h.id}">Копіювати</button><button class="danger" data-del-h="${h.id}">Видалити</button></div></div>`).join('') || '<p class="hint">Історія порожня.</p>';
+  $('#historyList').innerHTML = list.map(h => `<div class="record-card"><b>Замовлення на: ${h.meta.date}</b><div class="meta">Відповідальний: ${escapeHtml(h.meta.responsible || '-')} • позицій: ${h.items.length}</div><div class="card-actions"><button class="primary" data-view-h="${h.id}">Перегляд</button><button class="success" data-open-h="${h.id}">Відкрити</button><button class="ghost" data-load-h="${h.id}">Повторити</button><button class="ghost" data-copy-h="${h.id}">Копіювати</button><button class="danger" data-del-h="${h.id}">Видалити</button></div></div>`).join('') || '<p class="hint">Історія порожня.</p>';
   $$('[data-view-h]').forEach(b => b.addEventListener('click', () => viewHistory(b.dataset.viewH)));
+  $$('[data-open-h]').forEach(b => b.addEventListener('click', () => openHistoryForEdit(b.dataset.openH)));
   $$('[data-load-h]').forEach(b => b.addEventListener('click', () => loadHistoryAsNew(b.dataset.loadH)));
   $$('[data-copy-h]').forEach(b => b.addEventListener('click', () => copyText(formatOrderText(state.history.find(h=>h.id===b.dataset.copyH)))));
   $$('[data-del-h]').forEach(b => b.addEventListener('click', () => { if(confirmAction('Видалити запис історії?')) { state.history = state.history.filter(h=>h.id!==b.dataset.delH); saveState('Видалено запис історії'); renderHistory(); }}));
 }
 function viewHistory(id) { const h = state.history.find(x=>x.id===id); $('#viewTitle').textContent = 'Замовлення з історії'; $('#viewContent').textContent = formatOrderText(h); $('#viewModal').showModal(); }
-function loadHistoryAsNew(id) { const h = state.history.find(x=>x.id===id); snapshot(); state.currentOrder = migrateState({ currentOrder: { meta: {...h.meta, date: today()}, items: structuredClone(h.items).map(i=>({...i,id:uid()})), dirty: true, activeWarehouse: h.activeWarehouse || '1711', warehouses: h.warehouses || orderWarehouses(h) } }).currentOrder; syncMetaToForm(); saveState('Історію завантажено як нове замовлення'); showScreen('order'); renderAll(); }
+function orderFromHistory(h, dirty = true) {
+  return migrateState({ currentOrder: { meta: structuredClone(h.meta), items: structuredClone(h.items).map(i=>({...i,id:uid()})), dirty, activeWarehouse: h.activeWarehouse || '1711', warehouses: h.warehouses || orderWarehouses(h) } }).currentOrder;
+}
+function openHistoryForEdit(id) {
+  const h = state.history.find(x=>x.id===id);
+  if (!h) return;
+  if (state.currentOrder.items.length && !confirmAction('Відкрити це замовлення на головному екрані? Поточне незбережене замовлення буде замінено.')) return;
+  snapshot();
+  state.currentOrder = orderFromHistory(h, true);
+  syncMetaToForm();
+  saveState('Замовлення з історії відкрито для редагування');
+  showScreen('order');
+  renderAll();
+}
+function loadHistoryAsNew(id) { const h = state.history.find(x=>x.id===id); if (!h) return; snapshot(); state.currentOrder = orderFromHistory(h, true); syncMetaToForm(); saveState('Історію завантажено для повторного використання'); showScreen('order'); renderAll(); }
 $('#closeViewModal').addEventListener('click', () => $('#viewModal').close());
 
 
@@ -498,8 +647,8 @@ function formatOrderText(source = state.currentOrder) {
   const m = source.meta;
   const urgent = source.items.filter(isUrgentItem).length;
   const sections = orderWarehouses(source).map(w => {
-    const rows = warehouseItems(source, w).map(({item: i}, idx) => `${idx + 1}. [${urgencyMark(i)}] ${i.name} | ${qtyWithUnit(i)} |  | ${i.comment || '-'}`).join('\n') || 'Позицій немає';
-    return `\nСКЛАД ${w}\n№ | Статус | Найменування | Кількість | Видано | Коментар\n${rows}`;
+    const rows = warehouseItems(source, w).map(({item: i}, idx) => `${idx + 1}. [${urgencyMark(i)}] ${i.name} | ${qtyWithUnit(i)} | ${i.comment || '-'}`).join('\n') || 'Позицій немає';
+    return `\nСКЛАД ${w}\n№ | Статус | Найменування | Кількість | Коментар\n${rows}`;
   }).join('\n');
   return `ЗАМОВЛЕННЯ ЗІ СКЛАДУ\nЗамовлення на: ${m.date}\n\nВідповідальний: ${m.responsible}\n${sections}\n\nВсього позицій: ${source.items.length}\nТермінових: ${urgent}\nПримітки: ${m.notes || '-'}\n\nДата формування: ${new Date().toLocaleDateString('uk-UA')}\nПідпис відповідального: ____________________`;
 }
@@ -507,8 +656,8 @@ function formatOrderTable(source = state.currentOrder) {
   const lines = [];
   orderWarehouses(source).forEach(w => {
     lines.push(`Склад ${w}`);
-    lines.push('№\tСтатус\tНайменування\tКількість\tВидано\tКоментар');
-    warehouseItems(source, w).forEach(({item: i}, idx) => lines.push(`${idx+1}\t${urgencyMark(i)}\t${i.name}\t${qtyWithUnit(i)}\t\t${i.comment || ''}`));
+    lines.push('№\tСтатус\tНайменування\tКількість\tКоментар');
+    warehouseItems(source, w).forEach(({item: i}, idx) => lines.push(`${idx+1}\t${urgencyMark(i)}\t${i.name}\t${qtyWithUnit(i)}\t${i.comment || ''}`));
     lines.push('');
   });
   return lines.join('\n');
@@ -543,35 +692,133 @@ function exportPDF() {
 function buildPrintHtml() {
   const m = state.currentOrder.meta || {};
   const visibleWarehouses = orderWarehouses().filter(w => warehouseItems(state.currentOrder, w).length);
+  const longestNameLength = Math.max(12, ...state.currentOrder.items.map(i => String(i.name || '').length));
+  const nameColumnWidth = Math.min(25, Math.max(16, Math.round(longestNameLength * 0.55)));
   const sections = visibleWarehouses.map(w => {
     const rows = warehouseItems(state.currentOrder, w).map(({item: i}, idx) => {
       const status = urgencyMark(i);
       const rowClass = i.urgency === 'критично' ? ' class="critical-row"' : (i.urgency === 'терміново' ? ' class="urgent-row"' : (i.urgency === 'важливо' ? ' class="important-row"' : ''));
-      return `<tr${rowClass}><td class="center">${idx+1}</td><td class="status-cell">${escapeHtml(status)}</td><td>${escapeHtml(i.name)}</td><td class="qty-cell">${escapeHtml(qtyWithUnit(i))}</td><td class="issued-cell"></td><td>${escapeHtml(i.comment || '')}</td></tr>`;
+      return `<tr${rowClass}><td class="center">${idx+1}</td><td class="status-cell">${escapeHtml(status)}</td><td class="name-cell"><span>${escapeHtml(i.name)}</span></td><td class="qty-cell">${escapeHtml(qtyWithUnit(i))}</td><td>${escapeHtml(i.comment || '')}</td></tr>`;
     }).join('');
-    return `<section class="pdf-warehouse"><h2>СКЛАД ${escapeHtml(w)}</h2><table><colgroup><col class="c-num"><col class="c-status"><col class="c-name"><col class="c-qty"><col class="c-issued"><col class="c-comment"></colgroup><thead><tr><th>№</th><th>Статус</th><th>Найменування</th><th>Кількість</th><th>Видано</th><th>Коментар</th></tr></thead><tbody>${rows}</tbody></table></section>`;
+    return `<section class="pdf-warehouse"><h2>СКЛАД ${escapeHtml(w)}</h2><table><colgroup><col class="c-num"><col class="c-status"><col class="c-name"><col class="c-qty"><col class="c-comment"></colgroup><thead><tr><th>№</th><th>Статус</th><th>Найменування</th><th>Кількість</th><th>Коментар</th></tr></thead><tbody>${rows}</tbody></table></section>`;
   }).join('');
   const formedDate = new Date().toLocaleDateString('uk-UA');
   const titleDate = pdfTitleDate(m.date);
   return `<!doctype html><html lang="uk"><head><meta charset="utf-8"><title>Замовлення на ${titleDate}</title><style>
-*{box-sizing:border-box}body{font-family:Arial,Helvetica,sans-serif;color:#111;padding:8px;margin:0;background:#fff}h1{font-size:18px;text-align:center;margin:0 0 10px;text-transform:uppercase;letter-spacing:.2px}.meta{display:block;margin:0 0 10px;font-size:11px;line-height:1.35}.meta div{margin:1px 0}.pdf-warehouse{margin:0 0 10px;padding:0;break-inside:avoid}.pdf-warehouse h2{font-size:12px;margin:0 0 3px;padding:3px 5px;border:1px solid #333;background:#eef2f7;text-align:left}.pdf-warehouse table{width:100%;table-layout:fixed;border-collapse:collapse;font-size:9.5px;line-height:1.15;margin:0 0 6px}.pdf-warehouse th,.pdf-warehouse td{border:1px solid #333;padding:3px 4px;vertical-align:top;text-align:left}.pdf-warehouse th{background:#f8fafc;font-weight:700}.c-num{width:24px}.c-status{width:70px}.c-name{width:40%}.c-qty{width:74px}.c-issued{width:64px}.c-comment{width:auto}.center{text-align:center!important}.status-cell{font-weight:700;font-size:8.8px;white-space:nowrap}.qty-cell{white-space:nowrap}.issued-cell{height:18px}.urgent-row{background:#fff7ed}.critical-row{background:#fee2e2}.important-row{background:#fffbeb}.foot{margin-top:7px;font-size:10.5px;line-height:1.25}.foot p{margin:2px 0}@media print{@page{size:A4;margin:8mm}body{padding:0}.pdf-warehouse{break-inside:avoid;page-break-inside:avoid}}
+*{box-sizing:border-box}body{font-family:Arial,Helvetica,sans-serif;color:#111;padding:8px;margin:0;background:#fff}h1{font-size:20px;text-align:center;margin:0 0 11px;text-transform:uppercase;letter-spacing:.2px}.meta{display:block;margin:0 0 11px;font-size:12px;line-height:1.35}.meta div{margin:1px 0}.pdf-warehouse{margin:0 0 12px;padding:0;break-inside:avoid}.pdf-warehouse h2{font-size:15px;margin:0 0 4px;padding:5px 7px;border:1px solid #333;background:#eef2f7;text-align:left;font-weight:800}.pdf-warehouse table{width:100%;table-layout:fixed;border-collapse:collapse;font-size:13px;line-height:1.25;margin:0 0 8px}.pdf-warehouse th,.pdf-warehouse td{border:1px solid #333;padding:8px 6px;vertical-align:top;text-align:left;min-height:34px}.pdf-warehouse th{background:#f8fafc;font-size:14px;font-weight:900}.pdf-warehouse td{font-weight:700}.c-num{width:34px}.c-status{width:86px}.c-name{width:${nameColumnWidth}%}.c-qty{width:88px}.c-comment{width:auto}.center{text-align:center!important;font-size:14px;font-weight:900}.status-cell{font-weight:900;font-size:11px;white-space:nowrap}.name-cell span{display:block;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.qty-cell{white-space:nowrap;font-weight:900}.urgent-row{background:#fff7ed}.critical-row{background:#fee2e2}.important-row{background:#fffbeb}.foot{margin-top:8px;font-size:12px;line-height:1.3}.foot p{margin:3px 0}@media print{@page{size:A4;margin:8mm}body{padding:0}.pdf-warehouse{break-inside:avoid;page-break-inside:avoid}}
 </style></head><body><h1>ЗАМОВЛЕННЯ НА ${titleDate}</h1><div class="meta"><div>Відповідальний: <b>${escapeHtml(m.responsible || '-')}</b></div><div>Дата формування: <b>${formedDate}</b></div></div>${sections}<div class="foot"><p>Примітки: ${escapeHtml(m.notes || '-')}</p><p>Підпис відповідального: ____________________ ${escapeHtml(state.settings.pdfSignature || '')}</p></div></body></html>`;
+}
+function exportEditableDocument(type) {
+  readMetaFromForm();
+  if (!state.currentOrder.items.length) {
+    alert('У замовленні немає позицій для вивантаження.');
+    return;
+  }
+  const isExcel = type === 'excel';
+  const html = buildEditableDocumentHtml(isExcel ? 'excel' : 'word');
+  const date = safeFilePart(state.currentOrder.meta?.date || today());
+  const ext = isExcel ? 'xls' : 'doc';
+  const mime = isExcel ? 'application/vnd.ms-excel;charset=utf-8' : 'application/msword;charset=utf-8';
+  downloadBlob(`zamovlennia-${date}.${ext}`, html, mime);
+}
+function buildEditableDocumentHtml(type) {
+  const m = state.currentOrder.meta || {};
+  const visibleWarehouses = orderWarehouses().filter(w => warehouseItems(state.currentOrder, w).length);
+  const longestNameLength = Math.max(12, ...state.currentOrder.items.map(i => String(i.name || '').length));
+  const nameColumnWidth = Math.min(25, Math.max(16, Math.round(longestNameLength * 0.55)));
+  const formedDate = new Date().toLocaleDateString('uk-UA');
+  const titleDate = pdfTitleDate(m.date);
+  const sections = visibleWarehouses.map(w => {
+    const rows = warehouseItems(state.currentOrder, w).map(({item: i}, idx) => {
+      const rowClass = i.urgency === 'критично' ? ' class="critical-row"' : (i.urgency === 'терміново' ? ' class="urgent-row"' : (i.urgency === 'важливо' ? ' class="important-row"' : ''));
+      return `<tr${rowClass}><td class="center">${idx + 1}</td><td class="status-cell">${escapeHtml(urgencyMark(i))}</td><td class="name-cell">${escapeHtml(i.name)}</td><td class="qty-cell">${escapeHtml(qtyWithUnit(i))}</td><td>${escapeHtml(i.comment || '')}</td></tr>`;
+    }).join('');
+    return `<section class="doc-warehouse"><h2>СКЛАД ${escapeHtml(w)}</h2><table><colgroup><col class="c-num"><col class="c-status"><col class="c-name"><col class="c-qty"><col class="c-comment"></colgroup><thead><tr><th>№</th><th>Статус</th><th>Найменування</th><th>Кількість</th><th>Коментар</th></tr></thead><tbody>${rows}</tbody></table></section>`;
+  }).join('');
+  const officeMeta = type === 'excel'
+    ? '<meta name="ProgId" content="Excel.Sheet">'
+    : '<meta name="ProgId" content="Word.Document">';
+  return `<!doctype html><html lang="uk"><head><meta charset="utf-8">${officeMeta}<title>Замовлення на ${titleDate}</title><style>
+body{font-family:Arial,Helvetica,sans-serif;color:#111;background:#fff;margin:8px}h1{font-size:20px;text-align:center;margin:0 0 11px;text-transform:uppercase}.meta{font-size:12px;line-height:1.35;margin:0 0 11px}.doc-warehouse{margin:0 0 12px}.doc-warehouse h2{font-size:15px;margin:0 0 4px;padding:5px 7px;border:1px solid #333;background:#eef2f7;font-weight:800}.doc-warehouse table{width:100%;border-collapse:collapse;font-size:13px;line-height:1.25;margin:0 0 8px}.doc-warehouse th,.doc-warehouse td{border:1px solid #333;padding:8px 6px;vertical-align:top;text-align:left;height:34px}.doc-warehouse th{background:#f8fafc;font-size:14px;font-weight:900}.doc-warehouse td{font-weight:700}.c-num{width:34px}.c-status{width:86px}.c-name{width:${nameColumnWidth}%}.c-qty{width:88px}.c-comment{width:auto}.center{text-align:center!important;font-size:14px;font-weight:900}.status-cell{font-weight:900;font-size:11px;white-space:nowrap}.name-cell{white-space:normal}.qty-cell{white-space:nowrap;font-weight:900}.urgent-row{background:#fff7ed}.critical-row{background:#fee2e2}.important-row{background:#fffbeb}.foot{margin-top:8px;font-size:12px;line-height:1.3}.foot p{margin:3px 0}
+</style></head><body><h1>ЗАМОВЛЕННЯ НА ${titleDate}</h1><div class="meta"><div>Відповідальний: <b>${escapeHtml(m.responsible || '-')}</b></div><div>Дата формування: <b>${formedDate}</b></div></div>${sections}<div class="foot"><p>Примітки: ${escapeHtml(m.notes || '-')}</p><p>Підпис відповідального: ____________________ ${escapeHtml(state.settings.pdfSignature || '')}</p></div></body></html>`;
+}
+function safeFilePart(value) {
+  return String(value || '').trim().replace(/[^\p{L}\p{N}._-]+/gu, '-').replace(/^-+|-+$/g, '') || 'document';
+}
+function downloadBlob(name, content, mime) {
+  const blob = new Blob(['\ufeff', content], { type: mime });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = name;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(a.href);
 }
 function clearOrder() { if(!confirmAction('Очистити поточне замовлення?')) return; snapshot(); state.currentOrder = { meta: { date: today(), responsible: state.settings.defaultResponsible, notes: '' }, items: [], dirty: false, activeWarehouse: '1711', warehouses: ['1711', '1719'] }; syncMetaToForm(); saveState('Очищено поточне замовлення'); renderAll(); }
 
 function bindDataEvents() {
-  $('#exportAllBtn').addEventListener('click', () => downloadJson('warehouse-order-all.json', state));
-  $('#exportDirectoryBtn').addEventListener('click', () => downloadJson('warehouse-directory.json', { positions: state.positions }));
-  $('#exportHistoryBtn').addEventListener('click', () => downloadJson('warehouse-history.json', { history: state.history }));
-  $('#backupBtn').addEventListener('click', () => downloadJson(`backup-${today()}.json`, state));
+  $('#backupBtn').addEventListener('click', () => downloadJson(`warehouse-backup-${today()}.json`, state));
+  $('#restoreBackupBtn').addEventListener('click', () => $('#importFile').click());
   $('#importFile').addEventListener('change', importJson);
   $('#wipeDataBtn').addEventListener('click', () => { if(confirmAction('Повністю очистити всі дані? Назад дороги не буде.')) { localStorage.removeItem(STORAGE_KEY); location.reload(); }});
   $('#saveSettingsBtn').addEventListener('click', saveSettings);
+  $('#refreshAppBtn')?.addEventListener('click', () => refreshAppCache(false));
+  $('#installAppBtn')?.addEventListener('click', installApp);
 }
-function downloadJson(name, data) { const blob = new Blob([JSON.stringify(data, null, 2)], {type:'application/json'}); const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name; a.click(); URL.revokeObjectURL(a.href); }
-function importJson(e) { const file = e.target.files[0]; if (!file) return; const r = new FileReader(); r.onload = () => { try { const data = JSON.parse(r.result); snapshot(); if(data.positions) state.positions = data.positions; if(data.history) state.history = data.history; if(data.currentOrder) state.currentOrder = data.currentOrder; if(data.templates) state.templates = data.templates; if(data.settings) state.settings = data.settings; state = migrateState(state); saveState('Імпортовано JSON'); renderAll(); alert('Імпорт завершено.'); } catch { alert('Файл JSON пошкоджений або неправильний.'); } }; r.readAsText(file); }
-function saveSettings() { state.settings = { defaultShift: '', defaultResponsible: $('#defaultResponsible').value.trim(), pdfSignature: $('#pdfSignature').value.trim() }; saveState('Збережено налаштування'); alert('Налаштування збережено.'); }
-function renderSettings() { $('#defaultResponsible').value = state.settings.defaultResponsible || ''; $('#pdfSignature').value = state.settings.pdfSignature || ''; $('#actionsLog').innerHTML = state.actions.map(a => `<div>${new Date(a.at).toLocaleString('uk-UA')} — ${escapeHtml(a.text)}</div>`).join('') || '<p class="hint">Журнал порожній.</p>'; }
+function downloadJson(name, data) { downloadBlob(name, JSON.stringify(data, null, 2), 'application/json'); }
+function importJson(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+  const r = new FileReader();
+  r.onload = () => {
+    try {
+      const data = JSON.parse(r.result);
+      const backup = data.positions || data.history || data.currentOrder || data.templates || data.settings
+        ? data
+        : null;
+      if (!backup) throw new Error('wrong-format');
+      if (!confirmAction('Імпортувати резервну копію і замінити поточні локальні дані?')) return;
+      snapshot();
+      state = migrateState({
+        positions: backup.positions,
+        currentOrder: backup.currentOrder,
+        history: backup.history,
+        templates: backup.templates,
+        settings: backup.settings,
+        actions: backup.actions
+      });
+      saveState('Імпортовано резервну копію');
+      renderAll();
+      alert('Резервну копію імпортовано.');
+    } catch {
+      alert('Не вдалося імпортувати файл. Обери резервну копію цього додатка у форматі JSON.');
+    } finally {
+      e.target.value = '';
+    }
+  };
+  r.readAsText(file);
+}
+function saveSettings() {
+  state.settings = {
+    ...state.settings,
+    defaultShift: '',
+    defaultResponsible: $('#defaultResponsible').value.trim(),
+    pdfSignature: $('#pdfSignature').value.trim(),
+    autoNewDay: $('#autoNewDay').checked,
+    autoUpdateCache: $('#autoUpdateCache').checked
+  };
+  saveState('Збережено налаштування');
+  alert('Налаштування збережено.');
+}
+function renderSettings() {
+  $('#defaultResponsible').value = state.settings.defaultResponsible || '';
+  $('#pdfSignature').value = state.settings.pdfSignature || '';
+  $('#autoNewDay').checked = state.settings.autoNewDay !== false;
+  $('#autoUpdateCache').checked = state.settings.autoUpdateCache !== false;
+  $('#appInfo').textContent = `Версія: ${APP_VERSION} • остання перевірка оновлень: ${state.settings.lastCacheRefresh || 'ще не виконувалась'}`;
+  $('#actionsLog').innerHTML = state.actions.map(a => `<div>${new Date(a.at).toLocaleString('uk-UA')} — ${escapeHtml(a.text)}</div>`).join('') || '<p class="hint">Журнал порожній.</p>';
+}
 
 function bindHotkeys() {
   document.addEventListener('keydown', e => {
@@ -587,87 +834,45 @@ function bindHotkeys() {
 function bindPWA() {
   if ('serviceWorker' in navigator) navigator.serviceWorker.register('service-worker.js');
   window.addEventListener('beforeinstallprompt', e => { e.preventDefault(); deferredPrompt = e; $('#installBtn').classList.remove('hidden'); });
-  $('#installBtn').addEventListener('click', async () => { if (!deferredPrompt) return; deferredPrompt.prompt(); deferredPrompt = null; $('#installBtn').classList.add('hidden'); });
+  $('#installBtn').addEventListener('click', installApp);
+}
+async function installApp() {
+  if (!deferredPrompt) {
+    alert('Автоматичне встановлення зараз недоступне в цьому браузері. Android/Chrome або Windows/Mac Chrome/Edge зазвичай показують кнопку встановлення. На iPhone відкрий Safari: Поділитися → На екран Домівки.');
+    return;
+  }
+  deferredPrompt.prompt();
+  try { await deferredPrompt.userChoice; } catch {}
+  deferredPrompt = null;
+  $('#installBtn').classList.add('hidden');
+}
+async function refreshAppCache(silent = true) {
+  try {
+    if ('caches' in window) {
+      const keys = await caches.keys();
+      await Promise.all(keys.map(key => caches.delete(key)));
+    }
+    if ('serviceWorker' in navigator) {
+      const reg = await navigator.serviceWorker.getRegistration();
+      if (reg) await reg.update();
+    }
+    await Promise.all(CORE_ASSETS.map(path => fetch(`${path}?refresh=${Date.now()}`, { cache: 'reload' }).catch(() => null)));
+    state.settings.lastCacheRefresh = today();
+    saveState('Оновлено кеш додатка');
+    if (!silent) {
+      alert('Кеш оновлено. Сторінка перезавантажиться, локальні дані залишаться на місці.');
+      location.reload();
+    }
+  } catch {
+    if (!silent) alert('Не вдалося оновити кеш. Перевір підключення або відкрий додаток через сайт.');
+  }
+}
+function checkDailyAppUpdate() {
+  if (state.settings.autoUpdateCache === false) return;
+  if (state.settings.lastCacheRefresh === today()) return;
+  refreshAppCache(true);
 }
 function restoreDraftNotice() { if (state.currentOrder.items.length && state.currentOrder.dirty) setTimeout(() => alert('Знайдено незавершену чернетку. Вона вже відновлена.'), 350); }
-function renderAll() { syncMetaToForm(); renderQuickList(); renderOrderItems(); renderDirectory(); renderTemplates(); renderHistory(); renderSettings(); }
+function renderAll() { syncMetaToForm(); renderOrderItems(); renderDirectory(); renderTemplates(); renderHistory(); renderSettings(); }
 function escapeHtml(s) { return String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
 function escapeAttr(s) { return escapeHtml(s).replace(/'/g, '&#39;'); }
-
-
-/* v27 bulk add fix */
-function bindBulkImportPositions(){
-  const btn = document.getElementById('bulkAddPositionsBtn');
-  if(!btn || btn.dataset.boundV27) return;
-  btn.dataset.boundV27='1';
-
-  btn.addEventListener('click', () => {
-    const ta = document.getElementById('bulkPositionsInput');
-    const result = document.getElementById('bulkAddResult');
-    if(!ta) return;
-
-    const lines = ta.value.split(/\r?\n/)
-      .map(v => v.trim())
-      .filter(Boolean);
-
-    let added = 0;
-
-    lines.forEach(name => {
-      const exists = state.positions.some(p =>
-        String(p.name || '').trim().toLowerCase() === name.toLowerCase()
-      );
-
-      if(!exists){
-        state.positions.push({
-          id: uid(),
-          name,
-          category: 'Сировина',
-          unit: 'кг',
-          note: '',
-          favorite: false,
-          usage: 0,
-          createdAt: Date.now()
-        });
-        added++;
-      }
-    });
-
-    saveState('Масово додано позиції');
-    renderAll();
-
-    if(result){
-      result.textContent = 'Додано позицій: ' + added;
-    }
-  });
-}
-
-document.addEventListener('DOMContentLoaded', () => {
-  setTimeout(bindBulkImportPositions, 500);
-});
-
-
-/* v28: правильне видалення всіх позицій із довідника */
-function bindDeleteAllPositionsFixed(){
-  const btn = document.getElementById('deleteAllPositionsBtn');
-  if(!btn || btn.dataset.boundV28) return;
-  btn.dataset.boundV28 = '1';
-
-  const cleanBtn = btn.cloneNode(true);
-  btn.parentNode.replaceChild(cleanBtn, btn);
-
-  cleanBtn.addEventListener('click', () => {
-    if(!confirm('Видалити всі позиції з довідника?')) return;
-    if(!confirm('Точно видалити весь список позицій?')) return;
-
-    state.positions = [];
-    saveState('Видалено всі позиції');
-    renderAll();
-
-    const result = document.getElementById('bulkAddResult');
-    if(result) result.textContent = 'Усі позиції видалено.';
-  });
-}
-
-document.addEventListener('DOMContentLoaded', () => {
-  setTimeout(bindDeleteAllPositionsFixed, 600);
-});
