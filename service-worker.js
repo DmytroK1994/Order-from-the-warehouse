@@ -1,6 +1,6 @@
 'use strict';
 
-const CACHE_NAME = 'warehouse-order-pwa-v43';
+const CACHE_NAME = 'warehouse-order-pwa-v44';
 const ASSETS = [
   './',
   './index.html',

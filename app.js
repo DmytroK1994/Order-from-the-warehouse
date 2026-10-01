@@ -2,7 +2,7 @@
 
 // PWA-додаток без фреймворків. Усі дані зберігаються локально у localStorage.
 const STORAGE_KEY = 'warehouse_order_pwa_v1';
-const APP_VERSION = 'v43';
+const APP_VERSION = 'v44';
 const CORE_ASSETS = ['./', './index.html', './styles.css', './app.js', './manifest.json'];
 const UNITS = ['кг', 'г', 'т', 'шт', 'мішки', 'коробки', 'ящики', 'піддони', 'літри', 'власна одиниця'];
 const CATEGORIES = ['Сировина', 'Жири', 'Молочна продукція', 'Крохмалі', 'Какао-продукти', 'Пакування', 'Тара', 'Допоміжні матеріали', 'Інше'];
@@ -727,17 +727,15 @@ function exportEditableDocument(type) {
     return;
   }
   const isExcel = type === 'excel';
-  const html = buildEditableDocumentHtml(isExcel ? 'excel' : 'word');
+  const content = isExcel ? buildExcelWorkbookXml() : buildWordDocumentHtml();
   const date = safeFilePart(state.currentOrder.meta?.date || today());
   const ext = isExcel ? 'xls' : 'doc';
   const mime = isExcel ? 'application/vnd.ms-excel;charset=utf-8' : 'application/msword;charset=utf-8';
-  downloadBlob(`zamovlennia-${date}.${ext}`, html, mime);
+  downloadBlob(`zamovlennia-${date}.${ext}`, content, mime);
 }
-function buildEditableDocumentHtml(type) {
+function buildWordDocumentHtml() {
   const m = state.currentOrder.meta || {};
   const visibleWarehouses = orderWarehouses().filter(w => warehouseItems(state.currentOrder, w).length);
-  const longestNameLength = Math.max(12, ...state.currentOrder.items.map(i => String(i.name || '').length));
-  const nameColumnWidth = Math.min(25, Math.max(16, Math.round(longestNameLength * 0.55)));
   const formedDate = new Date().toLocaleDateString('uk-UA');
   const titleDate = pdfTitleDate(m.date);
   const sections = visibleWarehouses.map(w => {
@@ -747,15 +745,65 @@ function buildEditableDocumentHtml(type) {
     }).join('');
     return `<section class="doc-warehouse"><h2>СКЛАД ${escapeHtml(w)}</h2><table><colgroup><col class="c-num"><col class="c-status"><col class="c-name"><col class="c-qty"><col class="c-comment"></colgroup><thead><tr><th>№</th><th>Статус</th><th>Найменування</th><th>Кількість</th><th>Коментар</th></tr></thead><tbody>${rows}</tbody></table></section>`;
   }).join('');
-  const officeMeta = type === 'excel'
-    ? '<meta name="ProgId" content="Excel.Sheet">'
-    : '<meta name="ProgId" content="Word.Document">';
-  return `<!doctype html><html lang="uk"><head><meta charset="utf-8">${officeMeta}<title>Замовлення на ${titleDate}</title><style>
-body{font-family:Arial,Helvetica,sans-serif;color:#111;background:#fff;margin:8px}h1{font-size:20px;text-align:center;margin:0 0 11px;text-transform:uppercase}.meta{font-size:12px;line-height:1.35;margin:0 0 11px}.doc-warehouse{margin:0 0 12px}.doc-warehouse h2{font-size:15px;margin:0 0 4px;padding:5px 7px;border:1px solid #333;background:#eef2f7;font-weight:800}.doc-warehouse table{width:100%;border-collapse:collapse;font-size:13px;line-height:1.25;margin:0 0 8px}.doc-warehouse th,.doc-warehouse td{border:1px solid #333;padding:8px 6px;vertical-align:top;text-align:left;height:34px}.doc-warehouse th{background:#f8fafc;font-size:14px;font-weight:900}.doc-warehouse td{font-weight:700}.c-num{width:34px}.c-status{width:86px}.c-name{width:${nameColumnWidth}%}.c-qty{width:88px}.c-comment{width:auto}.center{text-align:center!important;font-size:14px;font-weight:900}.status-cell{font-weight:900;font-size:11px;white-space:nowrap}.name-cell{white-space:normal}.qty-cell{white-space:nowrap;font-weight:900}.urgent-row{background:#fff7ed}.critical-row{background:#fee2e2}.important-row{background:#fffbeb}.foot{margin-top:8px;font-size:12px;line-height:1.3}.foot p{margin:3px 0}
-</style></head><body><h1>ЗАМОВЛЕННЯ НА ${titleDate}</h1><div class="meta"><div>Відповідальний: <b>${escapeHtml(m.responsible || '-')}</b></div><div>Дата формування: <b>${formedDate}</b></div></div>${sections}<div class="foot"><p>Примітки: ${escapeHtml(m.notes || '-')}</p><p>Підпис відповідального: ____________________ ${escapeHtml(state.settings.pdfSignature || '')}</p></div></body></html>`;
+  return `<!doctype html><html lang="uk"><head><meta charset="utf-8"><meta name="ProgId" content="Word.Document"><title>Замовлення на ${titleDate}</title><style>
+@page WordSection1{size:841.95pt 595.35pt;margin:28.35pt 22.7pt 28.35pt 22.7pt}body{font-family:Arial,Helvetica,sans-serif;color:#111;background:#fff;margin:0}div.WordSection1{page:WordSection1}h1{font-size:18pt;text-align:center;margin:0 0 8pt;text-transform:uppercase}.meta{font-size:10pt;line-height:1.25;margin:0 0 8pt}.doc-warehouse{margin:0 0 10pt;page-break-inside:avoid}.doc-warehouse h2{font-size:12pt;margin:0 0 3pt;padding:4pt 5pt;border:1pt solid #333;background:#eef2f7;font-weight:800}.doc-warehouse table{width:100%;table-layout:fixed;border-collapse:collapse;font-size:10pt;line-height:1.2;margin:0 0 6pt}.doc-warehouse th,.doc-warehouse td{border:1pt solid #333;padding:6pt 5pt;vertical-align:top;text-align:left;height:28pt}.doc-warehouse th{background:#f8fafc;font-size:10.5pt;font-weight:900}.doc-warehouse td{font-weight:700}.c-num{width:5%}.c-status{width:12%}.c-name{width:25%}.c-qty{width:13%}.c-comment{width:45%}.center{text-align:center!important;font-size:11pt;font-weight:900}.status-cell{font-weight:900;font-size:9pt;white-space:nowrap}.name-cell{white-space:normal;word-break:normal}.qty-cell{white-space:nowrap;font-weight:900}.urgent-row{background:#fff7ed}.critical-row{background:#fee2e2}.important-row{background:#fffbeb}.foot{margin-top:6pt;font-size:10pt;line-height:1.25}.foot p{margin:2pt 0}
+</style></head><body><div class="WordSection1"><h1>ЗАМОВЛЕННЯ НА ${titleDate}</h1><div class="meta"><div>Відповідальний: <b>${escapeHtml(m.responsible || '-')}</b></div><div>Дата формування: <b>${formedDate}</b></div></div>${sections}<div class="foot"><p>Примітки: ${escapeHtml(m.notes || '-')}</p><p>Підпис відповідального: ____________________ ${escapeHtml(state.settings.pdfSignature || '')}</p></div></div></body></html>`;
+}
+function buildExcelWorkbookXml() {
+  const m = state.currentOrder.meta || {};
+  const titleDate = pdfTitleDate(m.date);
+  const formedDate = new Date().toLocaleDateString('uk-UA');
+  const rows = [
+    `<Row ss:Height="24"><Cell ss:MergeAcross="4" ss:StyleID="title"><Data ss:Type="String">ЗАМОВЛЕННЯ НА ${escapeXml(titleDate)}</Data></Cell></Row>`,
+    `<Row><Cell ss:MergeAcross="4" ss:StyleID="meta"><Data ss:Type="String">Відповідальний: ${escapeXml(m.responsible || '-')}</Data></Cell></Row>`,
+    `<Row><Cell ss:MergeAcross="4" ss:StyleID="meta"><Data ss:Type="String">Дата формування: ${escapeXml(formedDate)}</Data></Cell></Row>`,
+    '<Row></Row>'
+  ];
+  orderWarehouses().filter(w => warehouseItems(state.currentOrder, w).length).forEach(w => {
+    rows.push(`<Row ss:Height="22"><Cell ss:MergeAcross="4" ss:StyleID="warehouse"><Data ss:Type="String">СКЛАД ${escapeXml(w)}</Data></Cell></Row>`);
+    rows.push('<Row ss:Height="24"><Cell ss:StyleID="head"><Data ss:Type="String">№</Data></Cell><Cell ss:StyleID="head"><Data ss:Type="String">Статус</Data></Cell><Cell ss:StyleID="head"><Data ss:Type="String">Найменування</Data></Cell><Cell ss:StyleID="head"><Data ss:Type="String">Кількість</Data></Cell><Cell ss:StyleID="head"><Data ss:Type="String">Коментар</Data></Cell></Row>');
+    warehouseItems(state.currentOrder, w).forEach(({item: i}, idx) => {
+      const style = i.urgency === 'критично' ? 'critical' : (i.urgency === 'терміново' ? 'urgent' : (i.urgency === 'важливо' ? 'important' : 'cell'));
+      rows.push(`<Row ss:Height="34"><Cell ss:StyleID="num"><Data ss:Type="Number">${idx + 1}</Data></Cell><Cell ss:StyleID="${style}"><Data ss:Type="String">${escapeXml(urgencyMark(i))}</Data></Cell><Cell ss:StyleID="${style}"><Data ss:Type="String">${escapeXml(i.name)}</Data></Cell><Cell ss:StyleID="${style}"><Data ss:Type="String">${escapeXml(qtyWithUnit(i))}</Data></Cell><Cell ss:StyleID="${style}"><Data ss:Type="String">${escapeXml(i.comment || '')}</Data></Cell></Row>`);
+    });
+    rows.push('<Row></Row>');
+  });
+  rows.push(`<Row><Cell ss:MergeAcross="4" ss:StyleID="meta"><Data ss:Type="String">Примітки: ${escapeXml(m.notes || '-')}</Data></Cell></Row>`);
+  rows.push(`<Row><Cell ss:MergeAcross="4" ss:StyleID="meta"><Data ss:Type="String">Підпис відповідального: ____________________ ${escapeXml(state.settings.pdfSignature || '')}</Data></Cell></Row>`);
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<?mso-application progid="Excel.Sheet"?>
+<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet"
+ xmlns:o="urn:schemas-microsoft-com:office:office"
+ xmlns:x="urn:schemas-microsoft-com:office:excel"
+ xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet">
+ <Styles>
+  <Style ss:ID="title"><Alignment ss:Horizontal="Center"/><Font ss:Bold="1" ss:Size="15"/></Style>
+  <Style ss:ID="meta"><Alignment ss:Vertical="Top" ss:WrapText="1"/><Font ss:Size="10"/></Style>
+  <Style ss:ID="warehouse"><Alignment ss:Vertical="Center"/><Interior ss:Color="#EEF2F7" ss:Pattern="Solid"/><Borders><Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1"/></Borders><Font ss:Bold="1" ss:Size="12"/></Style>
+  <Style ss:ID="head"><Alignment ss:Vertical="Center" ss:WrapText="1"/><Interior ss:Color="#F8FAFC" ss:Pattern="Solid"/><Borders><Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1"/><Border ss:Position="Left" ss:LineStyle="Continuous" ss:Weight="1"/><Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1"/><Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1"/></Borders><Font ss:Bold="1" ss:Size="11"/></Style>
+  <Style ss:ID="cell"><Alignment ss:Vertical="Top" ss:WrapText="1"/><Borders><Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1"/><Border ss:Position="Left" ss:LineStyle="Continuous" ss:Weight="1"/><Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1"/><Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1"/></Borders><Font ss:Bold="1" ss:Size="10"/></Style>
+  <Style ss:ID="num"><Alignment ss:Horizontal="Center" ss:Vertical="Top"/><Borders><Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1"/><Border ss:Position="Left" ss:LineStyle="Continuous" ss:Weight="1"/><Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1"/><Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1"/></Borders><Font ss:Bold="1" ss:Size="11"/></Style>
+  <Style ss:ID="important"><Alignment ss:Vertical="Top" ss:WrapText="1"/><Interior ss:Color="#FFFBEB" ss:Pattern="Solid"/><Borders><Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1"/><Border ss:Position="Left" ss:LineStyle="Continuous" ss:Weight="1"/><Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1"/><Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1"/></Borders><Font ss:Bold="1" ss:Size="10"/></Style>
+  <Style ss:ID="urgent"><Alignment ss:Vertical="Top" ss:WrapText="1"/><Interior ss:Color="#FFF7ED" ss:Pattern="Solid"/><Borders><Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1"/><Border ss:Position="Left" ss:LineStyle="Continuous" ss:Weight="1"/><Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1"/><Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1"/></Borders><Font ss:Bold="1" ss:Size="10"/></Style>
+  <Style ss:ID="critical"><Alignment ss:Vertical="Top" ss:WrapText="1"/><Interior ss:Color="#FEE2E2" ss:Pattern="Solid"/><Borders><Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1"/><Border ss:Position="Left" ss:LineStyle="Continuous" ss:Weight="1"/><Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1"/><Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1"/></Borders><Font ss:Bold="1" ss:Size="10"/></Style>
+ </Styles>
+ <Worksheet ss:Name="Замовлення">
+  <Table>
+   <Column ss:Width="34"/>
+   <Column ss:Width="74"/>
+   <Column ss:Width="190"/>
+   <Column ss:Width="82"/>
+   <Column ss:Width="340"/>
+   ${rows.join('\n   ')}
+  </Table>
+ </Worksheet>
+</Workbook>`;
 }
 function safeFilePart(value) {
   return String(value || '').trim().replace(/[^\p{L}\p{N}._-]+/gu, '-').replace(/^-+|-+$/g, '') || 'document';
+}
+function escapeXml(value) {
+  return String(value ?? '').replace(/[<>&'"]/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;',"'":'&apos;','"':'&quot;'}[c]));
 }
 function downloadBlob(name, content, mime) {
   const blob = new Blob(['\ufeff', content], { type: mime });
